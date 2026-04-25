@@ -28,32 +28,56 @@
 # (top-level directories: backend/, frontend/).
 build_aeterna() {
     # ----- Backend -----
-    # Go needs GOPATH (modules cache) and GOCACHE (build cache) explicitly.
-    # The YunoHost install context runs the script with $HOME unset, so
-    # Go's normal `~/go` and `~/.cache/go-build` defaults aren't available
-    # and `go build` fails with "module cache not found". We point both at
-    # ephemeral subdirs of $install_dir and wipe them after the build so
-    # the runtime install footprint stays small.
-    local gobuild_workdir="$install_dir/.go-build"
-    mkdir -p "$gobuild_workdir/path" "$gobuild_workdir/cache"
+    # v1.5.0 ships a prebuilt linux/amd64 binary inside the source tarball
+    # at backend/server (23 MB ELF, built with the same Go 1.24.12 from
+    # github.com/alpyxn/aeterna/backend/cmd/server, requires GLIBC >= 2.34
+    # which is satisfied by Debian bookworm = YunoHost 12). Using it
+    # directly skips Go provisioning AND the multi-minute `go build` step
+    # — saves roughly 3-5 minutes on amd64. The manifest's pinned source
+    # sha256 already covers the binary's exact bytes, so trust doesn't
+    # change.
+    #
+    # arm64 hosts have no prebuilt and fall back to compiling from source.
+    local arch
+    arch="$(dpkg --print-architecture)"
 
-    pushd "$install_dir/backend" >/dev/null
-        # CGO_ENABLED=1 is required: github.com/mattn/go-sqlite3 ships C.
-        # backend/cmd/ has TWO packages (server, keytool) — `go build -o`
-        # cannot accept multiple packages, so target ./cmd/server explicitly.
-        # GOFLAGS=-buildvcs=false suppresses the "error obtaining VCS status"
-        # warning since the extracted tarball has no .git/.
-        env CGO_ENABLED=1 GOFLAGS=-buildvcs=false \
-            GOPATH="$gobuild_workdir/path" \
-            GOMODCACHE="$gobuild_workdir/path/pkg/mod" \
-            GOCACHE="$gobuild_workdir/cache" \
-            go build -trimpath -ldflags="-s -w" \
-            -o "$install_dir/backend/aeterna" ./cmd/server
-    popd >/dev/null
+    if [ "$arch" = "amd64" ] && [ -x "$install_dir/backend/server" ]; then
+        ynh_print_info "Using upstream's prebuilt linux/amd64 binary at backend/server (skips go build)"
+        mv "$install_dir/backend/server" "$install_dir/backend/aeterna"
+        chmod +x "$install_dir/backend/aeterna"
+    else
+        ynh_print_info "Compiling backend from source for $arch"
 
-    # Drop the build-time module + build cache; the production runtime
-    # only needs the compiled binary at backend/aeterna.
-    ynh_safe_rm "$gobuild_workdir"
+        # Go needs GOPATH (modules cache) and GOCACHE (build cache) explicitly.
+        # The YunoHost install context runs the script with $HOME unset, so
+        # Go's normal `~/go` and `~/.cache/go-build` defaults aren't available
+        # and `go build` fails with "module cache not found". We point both at
+        # ephemeral subdirs of $install_dir and wipe them after the build.
+        local gobuild_workdir="$install_dir/.go-build"
+        mkdir -p "$gobuild_workdir/path" "$gobuild_workdir/cache"
+
+        pushd "$install_dir/backend" >/dev/null
+            # CGO_ENABLED=1 is required: github.com/mattn/go-sqlite3 ships C.
+            # backend/cmd/ has TWO packages (server, keytool) — `go build -o`
+            # cannot accept multiple packages, so target ./cmd/server explicitly.
+            # GOFLAGS=-buildvcs=false suppresses the "error obtaining VCS
+            # status" warning since the extracted tarball has no .git/.
+            env CGO_ENABLED=1 GOFLAGS=-buildvcs=false \
+                GOPATH="$gobuild_workdir/path" \
+                GOMODCACHE="$gobuild_workdir/path/pkg/mod" \
+                GOCACHE="$gobuild_workdir/cache" \
+                go build -trimpath -ldflags="-s -w" \
+                -o "$install_dir/backend/aeterna" ./cmd/server
+        popd >/dev/null
+
+        ynh_safe_rm "$gobuild_workdir"
+    fi
+
+    # Both binaries are huge (23 MB each) and not part of the runtime: the
+    # systemd unit only invokes backend/aeterna. Drop them so $install_dir
+    # doesn't carry tens of MB of dead weight.
+    ynh_safe_rm "$install_dir/backend/server"
+    ynh_safe_rm "$install_dir/backend/main"
 
     # ----- Frontend -----
     # Same $HOME-unset story as Go above: npm caches into $HOME/.npm by
