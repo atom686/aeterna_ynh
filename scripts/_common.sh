@@ -28,6 +28,15 @@
 # (top-level directories: backend/, frontend/).
 build_aeterna() {
     # ----- Backend -----
+    # Go needs GOPATH (modules cache) and GOCACHE (build cache) explicitly.
+    # The YunoHost install context runs the script with $HOME unset, so
+    # Go's normal `~/go` and `~/.cache/go-build` defaults aren't available
+    # and `go build` fails with "module cache not found". We point both at
+    # ephemeral subdirs of $install_dir and wipe them after the build so
+    # the runtime install footprint stays small.
+    local gobuild_workdir="$install_dir/.go-build"
+    mkdir -p "$gobuild_workdir/path" "$gobuild_workdir/cache"
+
     pushd "$install_dir/backend" >/dev/null
         # CGO_ENABLED=1 is required: github.com/mattn/go-sqlite3 ships C.
         # backend/cmd/ has TWO packages (server, keytool) — `go build -o`
@@ -35,23 +44,41 @@ build_aeterna() {
         # GOFLAGS=-buildvcs=false suppresses the "error obtaining VCS status"
         # warning since the extracted tarball has no .git/.
         env CGO_ENABLED=1 GOFLAGS=-buildvcs=false \
+            GOPATH="$gobuild_workdir/path" \
+            GOMODCACHE="$gobuild_workdir/path/pkg/mod" \
+            GOCACHE="$gobuild_workdir/cache" \
             go build -trimpath -ldflags="-s -w" \
             -o "$install_dir/backend/aeterna" ./cmd/server
     popd >/dev/null
 
+    # Drop the build-time module + build cache; the production runtime
+    # only needs the compiled binary at backend/aeterna.
+    ynh_safe_rm "$gobuild_workdir"
+
     # ----- Frontend -----
+    # Same $HOME-unset story as Go above: npm caches into $HOME/.npm by
+    # default, which fails when HOME isn't set. Point npm_config_cache at
+    # an ephemeral subdir so `npm ci` can cache happily.
+    local npm_workdir="$install_dir/.npm-build"
+    mkdir -p "$npm_workdir"
+
     pushd "$install_dir/frontend" >/dev/null
         # VITE_API_URL is baked at build time into the JS bundle. Set it to
         # the YunoHost subpath + /api so the api.js client hits the
         # nginx /api proxy block (see conf/nginx.conf). --base aligns
         # asset URLs with the same subpath.
-        env VITE_API_URL="${path%/}/api" npm ci
-        env VITE_API_URL="${path%/}/api" npm run build -- --base="${path%/}/"
+        env VITE_API_URL="${path%/}/api" \
+            npm_config_cache="$npm_workdir" \
+            npm ci
+        env VITE_API_URL="${path%/}/api" \
+            npm_config_cache="$npm_workdir" \
+            npm run build -- --base="${path%/}/"
     popd >/dev/null
 
-    # We don't keep node_modules at runtime — the production deployment
+    # Drop both node_modules and the npm cache; the production deployment
     # is just the static dist/ output served by nginx.
     ynh_safe_rm "$install_dir/frontend/node_modules"
+    ynh_safe_rm "$npm_workdir"
 }
 
 # -----------------------------------------------------------------------------

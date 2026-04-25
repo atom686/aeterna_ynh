@@ -39,12 +39,22 @@ ynh_script_progression "Rebuilding the frontend with the new URL…"
 
 # Node was already provisioned by the manifest's [resources.nodejs] block
 # at install time and the helpers' auto-loader has put it on $PATH for us.
+# npm_config_cache is set explicitly because $HOME is unset in the YunoHost
+# script context — see _common.sh build_aeterna for the same reason.
+npm_workdir="$install_dir/.npm-build"
+mkdir -p "$npm_workdir"
+
 pushd "$install_dir/frontend" >/dev/null
-    env VITE_API_URL="${path%/}/api" npm ci
-    env VITE_API_URL="${path%/}/api" npm run build -- --base="${path%/}/"
+    env VITE_API_URL="${path%/}/api" \
+        npm_config_cache="$npm_workdir" \
+        npm ci
+    env VITE_API_URL="${path%/}/api" \
+        npm_config_cache="$npm_workdir" \
+        npm run build -- --base="${path%/}/"
 popd >/dev/null
 
 ynh_safe_rm "$install_dir/frontend/node_modules"
+ynh_safe_rm "$npm_workdir"
 
 #=================================================
 # RE-RENDER .env
