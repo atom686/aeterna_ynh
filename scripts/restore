@@ -51,7 +51,7 @@ yunohost service add "$app" \
 ynh_script_progression "Starting $app…"
 ynh_systemctl --service="$app" --action="start" \
     --log_path="/var/log/$app/$app.log" \
-    --wait_until="(?i)(Fiber v|bound on host|:3000)" \
+    --wait_until="Fiber v" \
     --timeout=120
 
 ynh_systemctl --service="nginx" --action="reload"
