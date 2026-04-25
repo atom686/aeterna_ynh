@@ -5,6 +5,10 @@
 
 set -eu
 
+# Resolve the script's own directory so `source _common.sh` works
+# regardless of the caller's cwd. See scripts/install for full context.
+cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+
 source _common.sh
 source /usr/share/yunohost/helpers
 
