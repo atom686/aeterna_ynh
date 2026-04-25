@@ -37,16 +37,13 @@ ynh_config_change_url_nginx
 
 ynh_script_progression "Rebuilding the frontend with the new URL…"
 
-ynh_install_nodejs --nodejs_version="$nodejs_version"
-ynh_use_nodejs
+# ynh_nodejs_install prepends the right Node bin dir to $PATH; nothing
+# extra is needed afterwards (no ynh_use_nodejs in v2.1).
+ynh_nodejs_install
 
 pushd "$install_dir/frontend" >/dev/null
-    ynh_exec_warn_less env \
-        VITE_API_URL="${path%/}/api" \
-        npm ci
-    ynh_exec_warn_less env \
-        VITE_API_URL="${path%/}/api" \
-        npm run build -- --base="${path%/}/"
+    env VITE_API_URL="${path%/}/api" npm ci
+    env VITE_API_URL="${path%/}/api" npm run build -- --base="${path%/}/"
 popd >/dev/null
 
 ynh_safe_rm "$install_dir/frontend/node_modules"

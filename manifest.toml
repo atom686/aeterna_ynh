@@ -101,8 +101,17 @@ ram.runtime = "256M"
         "ca-certificates",
         "build-essential",
         "openssl",
-        "wget",
     ]
+
+    [resources.go]
+    # Triggers the v2.1 goenv-based auto-loader. The actual version is
+    # set by `go_version` in scripts/_common.sh and provisioned by
+    # ynh_go_install at install/upgrade time.
+
+    [resources.nodejs]
+    # Triggers the v2.1 n-based auto-loader. The actual version is
+    # set by `nodejs_version` in scripts/_common.sh and provisioned by
+    # ynh_nodejs_install at install/upgrade time.
 
     [resources.permissions]
 

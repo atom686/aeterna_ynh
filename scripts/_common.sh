@@ -3,100 +3,66 @@
 # COMMON VARIABLES AND HELPERS
 # =============================================================================
 # Sourced by every script in scripts/. Holds:
-#   - pinned toolchain versions
-#   - install_go / remove_go (no ynh helper for Go in v2.1)
+#   - the toolchain versions consumed by the v2.1 helpers
+#     ($go_version + ynh_go_install, $nodejs_version + ynh_nodejs_install)
 #   - build_aeterna (Go backend + Vite frontend)
 #   - generate_encryption_key
 #   - assert_port_3000
+#
+# Note: helpers v2.1 has no ynh_exec_warn_less / ynh_exec_quiet wrappers —
+# those were v2.0 names. v2.1 packagers just call commands directly; the
+# trap installed by ynh_abort_if_errors handles failures.
 
-# v1.5.0's backend/go.mod requires Go >= 1.24.12. Bump in lockstep with
-# upstream's go.mod when bumping the source version.
-GO_VERSION="1.24.12"
+# v1.5.0's backend/go.mod requires Go >= 1.24.12. Bumping this in lockstep
+# with upstream's go.mod is enough — ynh_go_install reads $go_version,
+# resolves it via goenv-latest, and adds the matching binary to $PATH.
+go_version="1.24.12"
 
-# Vite 7 needs Node >= 20.19; Tailwind 4 wants Node >= 20. Use the
-# YunoHost-provided n+nvm setup which tracks LTS for the major version.
+# Vite 7 needs Node >= 20.19; Tailwind 4 wants Node >= 20. The 'n' tool
+# behind ynh_nodejs_install resolves "20" to the latest 20.x release.
 nodejs_version="20"
-
-# -----------------------------------------------------------------------------
-# install_go
-# -----------------------------------------------------------------------------
-# YunoHost helpers v2.1 has no ynh_install_go, so we fetch the official
-# tarball into $install_dir/.go and put it on PATH for the duration of
-# the install/upgrade. The directory is wiped by remove_go right after
-# the build to keep the runtime install_dir slim.
-install_go() {
-    local arch
-    case "$(dpkg --print-architecture)" in
-        amd64) arch="amd64" ;;
-        arm64) arch="arm64" ;;
-        *) ynh_die --message="Aeterna's Go build is only available for amd64 and arm64; got $(dpkg --print-architecture)" ;;
-    esac
-
-    local tarball="go${GO_VERSION}.linux-${arch}.tar.gz"
-    local url="https://go.dev/dl/${tarball}"
-
-    mkdir -p "$install_dir/.go"
-    pushd "$install_dir/.go" >/dev/null
-        ynh_exec_warn_less wget --quiet --show-progress -O "$tarball" "$url"
-        tar -xf "$tarball" --strip-components=1
-        rm -f "$tarball"
-    popd >/dev/null
-
-    export PATH="$install_dir/.go/bin:$PATH"
-    export GOCACHE="$install_dir/.go/cache"
-    export GOPATH="$install_dir/.go/path"
-    # -buildvcs=false avoids requiring git history inside the extracted tarball
-    export GOFLAGS="-buildvcs=false"
-}
-
-# -----------------------------------------------------------------------------
-# remove_go
-# -----------------------------------------------------------------------------
-remove_go() {
-    ynh_safe_rm "$install_dir/.go"
-}
 
 # -----------------------------------------------------------------------------
 # build_aeterna
 # -----------------------------------------------------------------------------
-# Compiles backend/cmd/server -> $install_dir/backend/aeterna
-# and runs `vite build` -> $install_dir/frontend/dist/.
-# Source layout is whatever ynh_setup_source produced from the upstream
-# v1.5.0 tarball (top-level directories: backend/, frontend/).
+# Compiles backend/cmd/server -> $install_dir/backend/aeterna and runs
+# `vite build` -> $install_dir/frontend/dist/. Source layout is whatever
+# ynh_setup_source produced from the upstream v1.5.0 tarball
+# (top-level directories: backend/, frontend/).
 build_aeterna() {
     # ----- Backend -----
-    install_go
+    # ynh_go_install provisions Go via goenv at /opt/goenv and prepends
+    # $GOENV_ROOT/versions/$go_version/bin to $PATH so `go` is callable
+    # from anywhere downstream.
+    ynh_go_install
 
     pushd "$install_dir/backend" >/dev/null
         # CGO_ENABLED=1 is required: github.com/mattn/go-sqlite3 ships C.
         # backend/cmd/ has TWO packages (server, keytool) — `go build -o`
         # cannot accept multiple packages, so target ./cmd/server explicitly.
-        ynh_exec_warn_less env CGO_ENABLED=1 \
-            "$install_dir/.go/bin/go" build -trimpath -ldflags="-s -w" \
+        # GOFLAGS=-buildvcs=false suppresses the "error obtaining VCS status"
+        # warning since the extracted tarball has no .git/.
+        env CGO_ENABLED=1 GOFLAGS=-buildvcs=false \
+            go build -trimpath -ldflags="-s -w" \
             -o "$install_dir/backend/aeterna" ./cmd/server
     popd >/dev/null
 
-    remove_go
-
     # ----- Frontend -----
-    ynh_install_nodejs --nodejs_version="$nodejs_version"
-    ynh_use_nodejs
+    # ynh_nodejs_install provisions Node via 'n' at /opt/node_n and
+    # prepends $N_PREFIX/n/versions/node/$nodejs_version/bin to $PATH.
+    ynh_nodejs_install
 
     pushd "$install_dir/frontend" >/dev/null
         # VITE_API_URL is baked at build time into the JS bundle. Set it to
         # the YunoHost subpath + /api so the api.js client hits the
         # nginx /api proxy block (see conf/nginx.conf). --base aligns
         # asset URLs with the same subpath.
-        ynh_exec_warn_less env \
-            VITE_API_URL="${path%/}/api" \
-            npm ci
-        ynh_exec_warn_less env \
-            VITE_API_URL="${path%/}/api" \
-            npm run build -- --base="${path%/}/"
+        env VITE_API_URL="${path%/}/api" npm ci
+        env VITE_API_URL="${path%/}/api" npm run build -- --base="${path%/}/"
     popd >/dev/null
 
-    # We don't keep node_modules — the production runtime is just the
-    # static dist/ output served by nginx.
+    # We don't keep node_modules at runtime — the production deployment
+    # is just the static dist/ output served by nginx.
     ynh_safe_rm "$install_dir/frontend/node_modules"
 }
 
