@@ -1,0 +1,50 @@
+[Unit]
+Description=Aeterna — self-hosted dead man's switch (backend)
+Documentation=https://github.com/alpyxn/aeterna
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__APP__
+Group=__APP__
+WorkingDirectory=__INSTALL_DIR__/backend
+EnvironmentFile=__INSTALL_DIR__/.env
+# v1.5.0's main.go reads the AES-256 key from the path passed via this CLI
+# flag (or /run/secrets/encryption_key as a Docker fallback). Without one
+# of those, services.InitKeyManager fails fast on startup.
+ExecStart=__INSTALL_DIR__/backend/aeterna --encryption-key-file=__DATA_DIR__/secrets/encryption_key
+Restart=on-failure
+RestartSec=5
+
+# Logging — the binary writes JSON to stdout; systemd captures both
+# streams to the file YunoHost watches via `yunohost service log`.
+StandardOutput=append:/var/log/__APP__/__APP__.log
+StandardError=append:/var/log/__APP__/__APP__.log
+
+# Sandboxing
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+# ProtectHome must NOT be true: $data_dir lives under /home/yunohost.app/
+# (the YunoHost convention) and the service needs to read+write the SQLite
+# DB, attachments, and encryption key there.
+ProtectHome=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+
+# Only the data dir and the app's log dir are writable; install_dir stays
+# read-only at runtime since rebuilds happen via ynh upgrade.
+ReadWritePaths=__DATA_DIR__ /var/log/__APP__
+
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

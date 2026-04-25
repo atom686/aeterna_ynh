@@ -1,0 +1,95 @@
+#!/bin/bash
+# =============================================================================
+# INSTALL SCRIPT
+# =============================================================================
+
+set -eu
+
+source _common.sh
+source /usr/share/yunohost/helpers
+
+#=================================================
+# PREFLIGHT
+#=================================================
+
+# Backend listens on hardcoded :3000 — bail before doing any work if
+# YunoHost gave us something else.
+assert_port_3000
+
+#=================================================
+# FETCH UPSTREAM SOURCES
+#=================================================
+
+ynh_script_progression "Setting up source files…"
+ynh_setup_source --dest_dir="$install_dir"
+
+chmod -R o-rwx "$install_dir"
+chown -R "$app:$app" "$install_dir"
+
+#=================================================
+# PREPARE DATA DIR
+#=================================================
+# Holds the SQLite DB, file attachments, and the AES-256 encryption key.
+
+ynh_script_progression "Preparing data directory…"
+mkdir -p "$data_dir/uploads"
+chmod -R o-rwx "$data_dir"
+chown -R "$app:$app" "$data_dir"
+
+ynh_script_progression "Generating encryption key…"
+generate_encryption_key
+
+#=================================================
+# BUILD FROM SOURCE
+#=================================================
+# This is the slow step — Go module download + build + npm ci + vite build
+# typically takes 3-5 minutes on a small VPS. ram.build = 1024M in the
+# manifest accounts for this.
+
+ynh_script_progression "Building Aeterna from source — this can take several minutes…"
+build_aeterna
+
+#=================================================
+# RENDER CONFIGURATION
+#=================================================
+
+ynh_script_progression "Adding configuration files…"
+ynh_config_add --template="aeterna.env" --destination="$install_dir/.env"
+chmod 600 "$install_dir/.env"
+chown "$app:$app" "$install_dir/.env"
+
+# Logs directory — must exist before systemd starts the unit since the
+# unit's StandardOutput= path is opened append-only.
+mkdir -p "/var/log/$app"
+chown -R "$app:$app" "/var/log/$app"
+
+#=================================================
+# SYSTEMD + NGINX
+#=================================================
+
+ynh_config_add_systemd
+ynh_config_add_nginx
+
+# Register so YunoHost surfaces logs/status under `yunohost service ...`.
+yunohost service add "$app" \
+    --description="Aeterna dead man's switch backend" \
+    --log="/var/log/$app/$app.log"
+
+# Re-assert ownership after all the helpers ran.
+chown -R "$app:$app" "$install_dir"
+chown -R "$app:$app" "$data_dir"
+
+#=================================================
+# START
+#=================================================
+
+ynh_script_progression "Starting Aeterna…"
+# fiber's startup line looks like:  ┃   listening on tcp://0.0.0.0:3000
+# Match anything containing "listening on tcp" or the explicit Started log
+# line that worker.go prints once the migration loop completes.
+ynh_systemctl --service="$app" --action="start" \
+    --log_path="/var/log/$app/$app.log" \
+    --wait_until="(?i)(Fiber v|bound on host|:3000)" \
+    --timeout=120
+
+ynh_script_progression "Installation of $app completed."

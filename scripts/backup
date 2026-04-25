@@ -1,0 +1,44 @@
+#!/bin/bash
+# =============================================================================
+# BACKUP SCRIPT
+# =============================================================================
+# Read-only declarations only — `ynh_backup` lists what to copy; the core
+# does the actual copying. Keep this fast and side-effect-free.
+
+set -eu
+
+source _common.sh
+source /usr/share/yunohost/helpers
+
+#=================================================
+# APPLICATION CODE + BUILT ARTIFACTS
+#=================================================
+
+ynh_script_progression "Backing up the install dir…"
+ynh_backup --src_path="$install_dir"
+
+#=================================================
+# USER DATA
+#=================================================
+# CRITICAL: $data_dir contains the encryption key alongside the DB and
+# attachments. Without the key, the backed-up DB is unreadable on restore,
+# so they MUST travel together. --is_big tells YunoHost to allow this dir
+# to grow without warning.
+
+ynh_script_progression "Backing up the data dir…"
+ynh_backup --src_path="$data_dir" --is_big
+
+#=================================================
+# LOGS
+#=================================================
+
+ynh_backup --src_path="/var/log/$app"
+
+#=================================================
+# SERVER CONFIGURATION
+#=================================================
+
+ynh_backup --src_path="/etc/nginx/conf.d/$domain.d/$app.conf"
+ynh_backup --src_path="/etc/systemd/system/$app.service"
+
+ynh_script_progression "Backup of $app completed."

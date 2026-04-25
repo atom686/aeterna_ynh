@@ -1,0 +1,42 @@
+#!/bin/bash
+# =============================================================================
+# REMOVE SCRIPT
+# =============================================================================
+# Per packaging conventions, remove uses `set -u` only — errors must NOT
+# halt the rest of the cleanup.
+
+set -u
+
+source _common.sh
+source /usr/share/yunohost/helpers
+
+#=================================================
+# DEREGISTER + STOP
+#=================================================
+
+if ynh_hide_warnings yunohost service status "$app" >/dev/null 2>&1; then
+    ynh_script_progression "Removing $app service integration…"
+    yunohost service remove "$app"
+fi
+
+ynh_script_progression "Stopping and removing systemd unit…"
+ynh_config_remove_systemd
+
+#=================================================
+# NGINX
+#=================================================
+
+ynh_script_progression "Removing nginx configuration…"
+ynh_config_remove_nginx
+
+#=================================================
+# LOGS
+#=================================================
+
+ynh_safe_rm "/var/log/$app"
+
+# install_dir, data_dir, system_user, ports and apt deps are reaped by the
+# manifest's resource teardown. Pass `--purge` to `yunohost app remove` to
+# also wipe $data_dir (encryption key + DB + attachments).
+
+ynh_script_progression "Removal of $app completed."

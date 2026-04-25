@@ -1,0 +1,22 @@
+File defining the license of this package.
+
+This YunoHost package for Aeterna is distributed under the GNU General
+Public License, version 3 or any later version, matching the license of
+the upstream Aeterna project (https://github.com/alpyxn/aeterna).
+
+A copy of the full license text is available at:
+
+    https://www.gnu.org/licenses/gpl-3.0.txt
+
+    Aeterna YunoHost package
+    Copyright (C) 2026 Igor Svrgn <is@svrgn.me>
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.

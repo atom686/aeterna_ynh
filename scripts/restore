@@ -1,0 +1,59 @@
+#!/bin/bash
+# =============================================================================
+# RESTORE SCRIPT
+# =============================================================================
+
+set -eu
+
+source _common.sh
+source /usr/share/yunohost/helpers
+
+#=================================================
+# RESTORE FILES
+#=================================================
+
+ynh_script_progression "Restoring the install dir…"
+ynh_restore_file --origin_path="$install_dir"
+
+ynh_script_progression "Restoring the data dir…"
+ynh_restore_file --origin_path="$data_dir" --not_mandatory
+
+ynh_script_progression "Restoring logs…"
+ynh_restore_file --origin_path="/var/log/$app" --not_mandatory
+
+ynh_script_progression "Restoring nginx + systemd configuration…"
+ynh_restore_file --origin_path="/etc/nginx/conf.d/$domain.d/$app.conf"
+ynh_restore_file --origin_path="/etc/systemd/system/$app.service"
+
+#=================================================
+# RE-ASSERT OWNERSHIP + PERMS
+#=================================================
+# Backup archives may have been built on another host; uid/gid mapping
+# can drift, so we re-set the canonical perms from scratch.
+
+chown -R "$app:$app" "$install_dir"
+chown -R "$app:$app" "$data_dir"
+chown -R "$app:$app" "/var/log/$app"
+chmod 700 "$data_dir/secrets" 2>/dev/null || true
+chmod 600 "$data_dir/secrets/encryption_key" 2>/dev/null || true
+chmod 600 "$install_dir/.env" 2>/dev/null || true
+
+#=================================================
+# RE-REGISTER + START
+#=================================================
+
+systemctl daemon-reload
+
+yunohost service add "$app" \
+    --description="Aeterna dead man's switch backend" \
+    --log="/var/log/$app/$app.log"
+
+ynh_script_progression "Starting $app…"
+ynh_systemctl --service="$app" --action="start" \
+    --log_path="/var/log/$app/$app.log" \
+    --wait_until="(?i)(Fiber v|bound on host|:3000)" \
+    --timeout=120
+
+ynh_systemctl --service="nginx" --action="reload"
+
+ynh_script_progression "Restore of $app completed."

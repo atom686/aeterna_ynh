@@ -1,0 +1,81 @@
+#!/bin/bash
+# =============================================================================
+# UPGRADE SCRIPT
+# =============================================================================
+
+set -eu
+
+source _common.sh
+source /usr/share/yunohost/helpers
+
+#=================================================
+# PREFLIGHT
+#=================================================
+
+assert_port_3000
+
+#=================================================
+# STOP THE SERVICE
+#=================================================
+# We're about to overwrite $install_dir; can't have the binary running.
+
+ynh_script_progression "Stopping $app…"
+ynh_systemctl --service="$app" --action="stop" --log_path="/var/log/$app/$app.log"
+
+#=================================================
+# REFRESH SOURCES
+#=================================================
+# --full_replace nukes $install_dir before extracting so removed upstream
+# files don't linger across upgrades. We do NOT --keep .env because we
+# regenerate it below from the current template.
+
+ynh_script_progression "Updating source files…"
+ynh_setup_source --dest_dir="$install_dir" --full_replace
+
+chmod -R o-rwx "$install_dir"
+chown -R "$app:$app" "$install_dir"
+
+#=================================================
+# DATA DIR INVARIANTS
+#=================================================
+# Idempotent — safe even when no upgrade-specific changes apply.
+
+mkdir -p "$data_dir/uploads" "$data_dir/secrets"
+chmod 700 "$data_dir/secrets"
+# generate_encryption_key is a no-op when the file exists (size > 0).
+generate_encryption_key
+chown -R "$app:$app" "$data_dir"
+
+#=================================================
+# REBUILD
+#=================================================
+
+ynh_script_progression "Rebuilding from source…"
+build_aeterna
+
+#=================================================
+# RENDER CONFIGURATION
+#=================================================
+
+ynh_script_progression "Updating configuration files…"
+ynh_config_add --template="aeterna.env" --destination="$install_dir/.env"
+chmod 600 "$install_dir/.env"
+chown "$app:$app" "$install_dir/.env"
+
+ynh_config_add_systemd
+ynh_config_add_nginx
+
+#=================================================
+# OWNERSHIP + START
+#=================================================
+
+chown -R "$app:$app" "$install_dir"
+chown -R "$app:$app" "$data_dir"
+
+ynh_script_progression "Starting $app…"
+ynh_systemctl --service="$app" --action="start" \
+    --log_path="/var/log/$app/$app.log" \
+    --wait_until="(?i)(Fiber v|bound on host|:3000)" \
+    --timeout=120
+
+ynh_script_progression "Upgrade of $app completed."

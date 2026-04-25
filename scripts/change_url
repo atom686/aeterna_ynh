@@ -1,0 +1,73 @@
+#!/bin/bash
+# =============================================================================
+# CHANGE URL SCRIPT
+# =============================================================================
+# Aeterna's frontend bakes VITE_API_URL and the Vite --base into the JS
+# bundle at build time, so a domain or path change requires us to:
+#   1) re-render the nginx vhost (helper does this for us),
+#   2) rebuild the frontend with the new path,
+#   3) re-render the .env so BASE_URL / ALLOWED_ORIGINS reflect the new origin,
+#   4) restart the backend.
+# The Go binary itself doesn't need recompilation.
+
+set -eu
+
+source _common.sh
+source /usr/share/yunohost/helpers
+
+#=================================================
+# STOP THE SERVICE
+#=================================================
+
+ynh_script_progression "Stopping $app…"
+ynh_systemctl --service="$app" --action="stop" --log_path="/var/log/$app/$app.log"
+
+#=================================================
+# NGINX
+#=================================================
+
+ynh_script_progression "Re-rendering nginx config…"
+ynh_config_change_url_nginx
+
+#=================================================
+# REBUILD FRONTEND ONLY
+#=================================================
+# build_aeterna would also rebuild the Go backend, which is unnecessary
+# here. Inline the frontend half to avoid the slow Go build.
+
+ynh_script_progression "Rebuilding the frontend with the new URL…"
+
+ynh_install_nodejs --nodejs_version="$nodejs_version"
+ynh_use_nodejs
+
+pushd "$install_dir/frontend" >/dev/null
+    ynh_exec_warn_less env \
+        VITE_API_URL="${path%/}/api" \
+        npm ci
+    ynh_exec_warn_less env \
+        VITE_API_URL="${path%/}/api" \
+        npm run build -- --base="${path%/}/"
+popd >/dev/null
+
+ynh_safe_rm "$install_dir/frontend/node_modules"
+
+#=================================================
+# RE-RENDER .env
+#=================================================
+# BASE_URL and ALLOWED_ORIGINS depend on the new domain/path.
+
+ynh_config_add --template="aeterna.env" --destination="$install_dir/.env"
+chmod 600 "$install_dir/.env"
+chown "$app:$app" "$install_dir/.env"
+
+#=================================================
+# START
+#=================================================
+
+ynh_script_progression "Starting $app…"
+ynh_systemctl --service="$app" --action="start" \
+    --log_path="/var/log/$app/$app.log" \
+    --wait_until="(?i)(Fiber v|bound on host|:3000)" \
+    --timeout=120
+
+ynh_script_progression "URL change for $app completed."

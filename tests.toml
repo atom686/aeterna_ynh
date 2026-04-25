@@ -1,0 +1,15 @@
+#:schema https://raw.githubusercontent.com/YunoHost/apps/main/schemas/tests.v1.schema.json
+
+test_format = 1.0
+
+[default]
+
+# This is the first packaging revision; nothing to upgrade-from yet. Once a
+# v1.5.0~ynh1 commit lands on main, add it here as:
+#   test_upgrade_from.<commit_sha>.name = "Upgrade from v1.5.0~ynh1"
+test_upgrade_from = {}
+
+# change_url is in scope (the script handles a frontend rebuild) but is
+# slow on resource-constrained CI runners because it re-runs `npm ci` and
+# `vite build`. Re-enable once the install/upgrade tests are stable in CI.
+exclude = ["change_url"]
