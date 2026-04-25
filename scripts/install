@@ -22,9 +22,9 @@ assert_port_3000
 
 ynh_script_progression "Setting up source files…"
 ynh_setup_source --dest_dir="$install_dir"
-
-chmod -R o-rwx "$install_dir"
-chown -R "$app:$app" "$install_dir"
+# ynh_setup_source's _ynh_apply_default_permissions has already done the
+# right thing: u=rwX,g=rX,o=---  with aeterna:www-data, because nginx.conf
+# uses `alias` to serve static files. Don't override here.
 
 #=================================================
 # PREPARE DATA DIR
@@ -75,8 +75,18 @@ yunohost service add "$app" \
     --description="Aeterna dead man's switch backend" \
     --log="/var/log/$app/$app.log"
 
-# Re-assert ownership after all the helpers ran.
-chown -R "$app:$app" "$install_dir"
+# build_aeterna left the binary (mv) and frontend/dist/* (vite output)
+# owned by root because the install script runs as root. Set them back
+# to aeterna:www-data so nginx (www-data) can read frontend/dist/* and
+# the systemd unit (User=aeterna) can execute backend/aeterna.
+chown -R "$app:www-data" "$install_dir"
+# Re-lock .env so only aeterna can read its secrets — the chown above
+# would otherwise widen its group to www-data.
+chown "$app:$app" "$install_dir/.env"
+chmod 600 "$install_dir/.env"
+
+# data_dir doesn't go through nginx, so the tighter aeterna:aeterna group
+# is correct and stays.
 chown -R "$app:$app" "$data_dir"
 
 #=================================================
