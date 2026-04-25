@@ -28,7 +28,12 @@ helpers_version = "2.1"
 # armhf is excluded because Go 1.24 dropped 32-bit ARM toolchain mirrors
 # for the linux-armv6l tarball series we'd need.
 architectures = ["amd64", "arm64"]
-multi_instance = true
+# multi_instance is false because Aeterna's binary hardcodes port 3000
+# (cmd/server/main.go: app.Listen(":3000")) — two instances can't bind
+# the same port on the same host. Multiple switches per user are
+# already handled inside a single Aeterna instance, so a second
+# instance wouldn't add anything.
+multi_instance = false
 # Aeterna has its own master-password auth scheme; it does not integrate
 # with the YunoHost LDAP / SSO portal at the application level.
 ldap = false
