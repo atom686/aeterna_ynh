@@ -3,24 +3,21 @@
 # COMMON VARIABLES AND HELPERS
 # =============================================================================
 # Sourced by every script in scripts/. Holds:
-#   - the toolchain versions consumed by the v2.1 helpers
-#     ($go_version + ynh_go_install, $nodejs_version + ynh_nodejs_install)
 #   - build_aeterna (Go backend + Vite frontend)
 #   - generate_encryption_key
 #   - assert_port_3000
 #
+# Toolchain versions live in manifest.toml under [resources.go].version and
+# [resources.nodejs].version — the YunoHost resource provisioner installs
+# them via goenv / n BEFORE any of these scripts run, then stores
+# $go_version and $nodejs_version as app settings. The v2.1 helpers'
+# auto-loaders read those and prepend the right bin dirs to $PATH on every
+# script invocation, so we can call `go` and `npm` directly here without
+# any explicit ynh_go_install / ynh_nodejs_install calls.
+#
 # Note: helpers v2.1 has no ynh_exec_warn_less / ynh_exec_quiet wrappers —
-# those were v2.0 names. v2.1 packagers just call commands directly; the
-# trap installed by ynh_abort_if_errors handles failures.
-
-# v1.5.0's backend/go.mod requires Go >= 1.24.12. Bumping this in lockstep
-# with upstream's go.mod is enough — ynh_go_install reads $go_version,
-# resolves it via goenv-latest, and adds the matching binary to $PATH.
-go_version="1.24.12"
-
-# Vite 7 needs Node >= 20.19; Tailwind 4 wants Node >= 20. The 'n' tool
-# behind ynh_nodejs_install resolves "20" to the latest 20.x release.
-nodejs_version="20"
+# those were v2.0 names. v2.1 packagers call commands directly; the trap
+# installed by ynh_abort_if_errors handles failures.
 
 # -----------------------------------------------------------------------------
 # build_aeterna
@@ -31,11 +28,6 @@ nodejs_version="20"
 # (top-level directories: backend/, frontend/).
 build_aeterna() {
     # ----- Backend -----
-    # ynh_go_install provisions Go via goenv at /opt/goenv and prepends
-    # $GOENV_ROOT/versions/$go_version/bin to $PATH so `go` is callable
-    # from anywhere downstream.
-    ynh_go_install
-
     pushd "$install_dir/backend" >/dev/null
         # CGO_ENABLED=1 is required: github.com/mattn/go-sqlite3 ships C.
         # backend/cmd/ has TWO packages (server, keytool) — `go build -o`
@@ -48,10 +40,6 @@ build_aeterna() {
     popd >/dev/null
 
     # ----- Frontend -----
-    # ynh_nodejs_install provisions Node via 'n' at /opt/node_n and
-    # prepends $N_PREFIX/n/versions/node/$nodejs_version/bin to $PATH.
-    ynh_nodejs_install
-
     pushd "$install_dir/frontend" >/dev/null
         # VITE_API_URL is baked at build time into the JS bundle. Set it to
         # the YunoHost subpath + /api so the api.js client hits the

@@ -104,14 +104,17 @@ ram.runtime = "256M"
     ]
 
     [resources.go]
-    # Triggers the v2.1 goenv-based auto-loader. The actual version is
-    # set by `go_version` in scripts/_common.sh and provisioned by
-    # ynh_go_install at install/upgrade time.
+    # Resource provisioner installs Go via goenv before scripts/install runs.
+    # `goenv-latest --print "1.24"` resolves to the highest 1.24.x release
+    # (currently 1.24.12+), satisfying upstream's `go 1.24.12` directive in
+    # backend/go.mod. Bump in lockstep with upstream.
+    version = "1.24"
 
     [resources.nodejs]
-    # Triggers the v2.1 n-based auto-loader. The actual version is
-    # set by `nodejs_version` in scripts/_common.sh and provisioned by
-    # ynh_nodejs_install at install/upgrade time.
+    # Resource provisioner installs Node via 'n' before scripts/install runs.
+    # "20" resolves to the latest 20.x LTS, which satisfies Vite 7
+    # (>= 20.19) and Tailwind 4 (>= 20).
+    version = "20"
 
     [resources.permissions]
 
