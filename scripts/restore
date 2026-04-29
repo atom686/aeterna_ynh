@@ -15,19 +15,24 @@ source /usr/share/yunohost/helpers
 #=================================================
 # RESTORE FILES
 #=================================================
+# v2.1's ynh_restore takes a positional path; there's no --not_mandatory
+# flag. The helper auto-detects $data_dir and /var/log/$app (anything
+# matching is_data=true) and silently skips them if they're absent in
+# the archive — which is exactly what happens when restoring from a
+# safety-backup-before-upgrade since those paths weren't included.
 
 ynh_script_progression "Restoring the install dir…"
-ynh_restore_file --origin_path="$install_dir"
+ynh_restore "$install_dir"
 
 ynh_script_progression "Restoring the data dir…"
-ynh_restore_file --origin_path="$data_dir" --not_mandatory
+ynh_restore "$data_dir"
 
 ynh_script_progression "Restoring logs…"
-ynh_restore_file --origin_path="/var/log/$app" --not_mandatory
+ynh_restore "/var/log/$app"
 
 ynh_script_progression "Restoring nginx + systemd configuration…"
-ynh_restore_file --origin_path="/etc/nginx/conf.d/$domain.d/$app.conf"
-ynh_restore_file --origin_path="/etc/systemd/system/$app.service"
+ynh_restore "/etc/nginx/conf.d/$domain.d/$app.conf"
+ynh_restore "/etc/systemd/system/$app.service"
 
 #=================================================
 # RE-ASSERT OWNERSHIP + PERMS
