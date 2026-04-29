@@ -8,7 +8,7 @@ name = "Aeterna"
 description.en = "Self-hosted dead man's switch: write messages, check in regularly, deliver if you stop."
 description.fr = "Système d'homme mort auto-hébergé : écrivez des messages, validez régulièrement, livraison si vous cessez."
 
-version = "1.5.0~ynh1"
+version = "1.5.0~ynh2"
 
 maintainers = ["is@svrgn.me"]
 
