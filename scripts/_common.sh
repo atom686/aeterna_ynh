@@ -26,31 +26,7 @@
 # `vite build` -> $install_dir/frontend/dist/. Source layout is whatever
 # ynh_setup_source produced from the upstream v1.5.0 tarball
 # (top-level directories: backend/, frontend/).
-apply_local_patches() {
-    # Apply each *.patch in conf/patches/ (alphabetical order) to the freshly
-    # extracted source tree. Dry-run first so we abort cleanly if upstream
-    # restructured a file the patch depends on, instead of silently building
-    # a broken binary.
-    local patches_dir="$YNH_APP_BASEDIR/conf/patches"
-    [ -d "$patches_dir" ] || return 0
-
-    local p
-    for p in "$patches_dir"/*.patch; do
-        [ -e "$p" ] || continue   # nothing to apply
-        ynh_print_info "Applying local patch $(basename "$p")"
-        if ! patch -p1 --dry-run -d "$install_dir" --silent < "$p"; then
-            ynh_die --message="Patch $(basename "$p") no longer applies cleanly to upstream — most likely Aeterna's source layout changed in a recent release. Review conf/patches/ against the current upstream tag."
-        fi
-        patch -p1 -d "$install_dir" --silent < "$p"
-    done
-}
-
 build_aeterna() {
-    # ----- Apply our local source patches BEFORE compile -----
-    # Currently: 01-allow-7z.patch (extra archive type in attachments).
-    # Each patch is reviewed against every Aeterna version bump.
-    apply_local_patches
-
     # ----- Backend -----
     # We always compile from source even on amd64 where the upstream tarball
     # ships a prebuilt backend/server binary, because that prebuilt is
@@ -92,14 +68,6 @@ build_aeterna() {
     # only invokes our freshly-compiled $install_dir/backend/aeterna.
     ynh_safe_rm "$install_dir/backend/server"
     ynh_safe_rm "$install_dir/backend/main"
-
-    # Smoke-check that 01-allow-7z.patch actually landed in the binary.
-    # If `apply_local_patches` ever silently no-ops (e.g. patch file lost,
-    # find skipped a hidden file), we want to fail loudly instead of
-    # shipping a binary that secretly rejects .7z files.
-    if ! grep -q "application/x-7z-compressed" "$install_dir/backend/aeterna"; then
-        ynh_die --message="Build smoke-check failed: compiled backend/aeterna does not contain the .7z MIME prefix. The local patch was either skipped or the build silently dropped the change."
-    fi
 
     # ----- Frontend -----
     # Same $HOME-unset story as Go above: npm caches into $HOME/.npm by
